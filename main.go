@@ -1,7 +1,29 @@
 package main
 
-import "fmt"
+import (
+	"log"
+	"os"
+	"strconv"
+)
 
 func main() {
-	fmt.Println("Hello, World!")
+	if len(os.Args) < 2 {
+		log.Fatalf("Usage: %s <port>\n", os.Args[0])
+	}
+
+	port, err := strconv.Atoi(os.Args[1])
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	server, err := NewServer(port)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	log.Printf("Server listening on port %d...\n", port)
+
+	server.Run()
+
+	log.Println("Server shutting down...")
 }
