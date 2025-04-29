@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"errors"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -15,10 +17,16 @@ type Server struct {
 	sync.RWMutex
 	wg          sync.WaitGroup
 	listener    *net.TCPListener
-	clients     map[net.Conn]struct{}
+	clients     map[net.Conn]Client
 	connections chan net.Conn
 	terminate   chan struct{}
 	shutdown    chan struct{}
+}
+
+type Client struct {
+	connection net.Conn
+	buffer     strings.Builder
+	userId     int
 }
 
 func NewServer(port int) (*Server, error) {
@@ -32,7 +40,7 @@ func NewServer(port int) (*Server, error) {
 	return &Server{
 		wg:          sync.WaitGroup{},
 		listener:    ln,
-		clients:     make(map[net.Conn]struct{}),
+		clients:     make(map[net.Conn]Client),
 		connections: make(chan net.Conn),
 		terminate:   make(chan struct{}),
 		shutdown:    make(chan struct{}),
@@ -105,8 +113,9 @@ func (s *Server) handleConnection(connection net.Conn) {
 
 	log.Printf("[%s] New connection\n", connection.RemoteAddr().String())
 
+	client := Client{connection: connection, userId: -1}
 	s.Lock()
-	s.clients[connection] = struct{}{}
+	s.clients[connection] = client
 	s.Unlock()
 
 	buf := make([]byte, BUFSIZE)
@@ -130,29 +139,32 @@ func (s *Server) handleConnection(connection net.Conn) {
 	for {
 		select {
 		case <-s.shutdown:
-			log.Printf("[%s] Disconnected\n", connection.RemoteAddr().String())
 			connection.Write([]byte("Disconnecting!"))
 			s.Lock()
 			delete(s.clients, connection)
 			s.Unlock()
 			return
-		case <-errChan:
-			log.Printf("[%s] Disconnected\n", connection.RemoteAddr().String())
-			connection.Write([]byte("Disconnecting!"))
+		case err := <-errChan:
+			if errors.Is(err, io.EOF) {
+				connection.Write([]byte("Disconnecting!"))
+				log.Printf("[%s] Disconnected\n", connection.RemoteAddr().String())
+			} else {
+				log.Printf("[%s] Error: %s\n", connection.RemoteAddr().String(), err.Error())
+			}
 			s.Lock()
 			delete(s.clients, connection)
 			s.Unlock()
 			return
 		case cnt := <-conChan:
-			response := strings.ToUpper(string(buf[:cnt]))
-			s.RLock()
-			for client := range s.clients {
-				if client == connection {
-					continue
-				}
-				client.Write([]byte(response))
+			client.buffer.Write(buf[:cnt])
+			messages := strings.Split(client.buffer.String(), "\n\n")
+			client.buffer.Reset()
+			client.buffer.WriteString(messages[len(messages)-1])
+			messages = messages[:len(messages)-1]
+
+			for _, message := range messages {
+				log.Printf("[%s] Message %s", client.connection.RemoteAddr().String(), message)
 			}
-			s.RUnlock()
 		}
 	}
 }
