@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -11,7 +12,7 @@ import (
 	"sync"
 )
 
-const BUFSIZE int = 4096
+const BUFSIZE = 4096
 
 type Server struct {
 	sync.RWMutex
@@ -19,8 +20,8 @@ type Server struct {
 	listener    *net.TCPListener
 	clients     map[net.Conn]Client
 	connections chan net.Conn
-	terminate   chan struct{}
-	shutdown    chan struct{}
+	terminate   chan any
+	shutdown    chan any
 }
 
 type Client struct {
@@ -42,8 +43,8 @@ func NewServer(port int) (*Server, error) {
 		listener:    ln,
 		clients:     make(map[net.Conn]Client),
 		connections: make(chan net.Conn),
-		terminate:   make(chan struct{}),
-		shutdown:    make(chan struct{}),
+		terminate:   make(chan any),
+		shutdown:    make(chan any),
 	}, nil
 }
 
@@ -111,7 +112,9 @@ func (s *Server) handleConnection(connection net.Conn) {
 	defer s.wg.Done()
 	defer connection.Close()
 
-	log.Printf("[%s] New connection\n", connection.RemoteAddr().String())
+	clientAddress := connection.RemoteAddr().String()
+
+	log.Printf("[%s] New connection\n", clientAddress)
 
 	client := Client{connection: connection, userId: -1}
 	s.Lock()
@@ -147,9 +150,9 @@ func (s *Server) handleConnection(connection net.Conn) {
 		case err := <-errChan:
 			if errors.Is(err, io.EOF) {
 				connection.Write([]byte("Disconnecting!"))
-				log.Printf("[%s] Disconnected\n", connection.RemoteAddr().String())
+				log.Printf("[%s] Disconnected\n", clientAddress)
 			} else {
-				log.Printf("[%s] Error: %s\n", connection.RemoteAddr().String(), err.Error())
+				log.Printf("[%s] Error: %s\n", clientAddress, err.Error())
 			}
 			s.Lock()
 			delete(s.clients, connection)
@@ -163,7 +166,16 @@ func (s *Server) handleConnection(connection net.Conn) {
 			messages = messages[:len(messages)-1]
 
 			for _, message := range messages {
-				log.Printf("[%s] Message %s", client.connection.RemoteAddr().String(), message)
+				parsedMessage, err := ProcessRequest(message)
+				if err != nil {
+					log.Printf("[%s] Parser error occured\n", clientAddress)
+					connection.Write([]byte(err.Error()))
+					log.Printf("[%s] Error message sent to client", clientAddress)
+					continue
+				}
+
+				jsonString, _ := json.Marshal(parsedMessage.payload)
+				log.Printf("[%s] Parsed message: %s|%s\n", clientAddress, parsedMessage.resourceMethod, jsonString)
 			}
 		}
 	}
