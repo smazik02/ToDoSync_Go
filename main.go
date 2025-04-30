@@ -21,6 +21,9 @@ func main() {
 		log.Fatalln(err.Error())
 	}
 
+	db := NewDBConnection()
+	defer db.Close()
+
 	log.Printf("Server listening on port %d...\n", port)
 
 	server.Run()
