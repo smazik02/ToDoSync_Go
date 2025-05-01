@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bufio"
@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"todosync_go/utils"
 )
 
 const BUFSIZE = 4096
@@ -27,6 +28,10 @@ type Client struct {
 	connection net.Conn
 	buffer     strings.Builder
 	userId     int
+}
+
+func (c Client) isLoggedIn() bool {
+	return c.userId != -1
 }
 
 func NewServer(port int) (*Server, error) {
@@ -165,7 +170,7 @@ func (s *Server) handleConnection(connection net.Conn) {
 			messages = messages[:len(messages)-1]
 
 			for _, message := range messages {
-				parsedMessage, err := ProcessRequest(message)
+				parsedMessage, err := utils.ProcessRequest(message)
 				if err != nil {
 					log.Printf("[%s] Parser error occured\n", clientAddress)
 					connection.Write([]byte(err.Error()))
@@ -173,7 +178,7 @@ func (s *Server) handleConnection(connection net.Conn) {
 					continue
 				}
 
-				log.Printf("[%s] Parsed message: %s|%s\n", clientAddress, parsedMessage.resourceMethod, string(parsedMessage.payload))
+				log.Printf("[%s] Parsed message: %s|%s\n", clientAddress, parsedMessage.ResourceMethod, string(parsedMessage.Payload))
 			}
 		}
 	}

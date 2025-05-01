@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"encoding/json"
@@ -19,8 +19,8 @@ const (
 )
 
 type ParserOutput struct {
-	resourceMethod ResourceMethod
-	payload        []byte
+	ResourceMethod ResourceMethod
+	Payload        []byte
 }
 
 type ParserError struct {
@@ -45,8 +45,8 @@ func ProcessRequest(request string) (*ParserOutput, error) {
 	}
 
 	return &ParserOutput{
-		resourceMethod: method,
-		payload:        payload,
+		ResourceMethod: method,
+		Payload:        payload,
 	}, nil
 }
 

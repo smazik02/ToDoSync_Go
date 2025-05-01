@@ -4,6 +4,8 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"todosync_go/internal/database"
+	"todosync_go/internal/server"
 )
 
 func main() {
@@ -16,17 +18,17 @@ func main() {
 		log.Fatalln(err.Error())
 	}
 
-	server, err := NewServer(port)
+	srv, err := server.NewServer(port)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	db := NewDBConnection()
+	db := database.NewDBConnection()
 	defer db.Close()
 
 	log.Printf("Server listening on port %d...\n", port)
 
-	server.Run()
+	srv.Run()
 
 	log.Println("Server shutting down...")
 }
