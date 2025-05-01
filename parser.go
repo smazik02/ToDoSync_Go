@@ -20,7 +20,7 @@ const (
 
 type ParserOutput struct {
 	resourceMethod ResourceMethod
-	payload        map[string]any
+	payload        []byte
 }
 
 type ParserError struct {
@@ -39,8 +39,8 @@ func ProcessRequest(request string) (*ParserOutput, error) {
 		return nil, err
 	}
 
-	payload := make(map[string]any)
-	if err := json.Unmarshal([]byte(lines[1]), &payload); err != nil {
+	payload := []byte(lines[1])
+	if !json.Valid(payload) {
 		return nil, ParserError{"Invalid request body"}
 	}
 

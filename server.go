@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -174,8 +173,7 @@ func (s *Server) handleConnection(connection net.Conn) {
 					continue
 				}
 
-				jsonString, _ := json.Marshal(parsedMessage.payload)
-				log.Printf("[%s] Parsed message: %s|%s\n", clientAddress, parsedMessage.resourceMethod, jsonString)
+				log.Printf("[%s] Parsed message: %s|%s\n", clientAddress, parsedMessage.resourceMethod, string(parsedMessage.payload))
 			}
 		}
 	}
