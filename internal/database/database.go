@@ -32,3 +32,13 @@ func NewDBConnection() *sql.DB {
 
 	return db
 }
+
+func CreateTables(db *sql.DB) {
+	_, err := db.Exec(`CREATE TABLE users (
+						id SERIAL PRIMARY KEY,
+						username TEXT UNIQUE NOT NULL
+						)`)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+}

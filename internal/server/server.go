@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"todosync_go/internal/database"
 	"todosync_go/utils"
 )
 
@@ -41,6 +42,9 @@ func NewServer(port int) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	db := database.NewDBConnection()
+	database.CreateTables(db)
 
 	return &Server{
 		wg:          sync.WaitGroup{},
