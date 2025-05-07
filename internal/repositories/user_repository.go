@@ -19,7 +19,7 @@ func NewUserRepository(db *sql.DB) UserRepository {
 	return UserRepository{db: db}
 }
 
-func (repository UserRepository) getUserByUsername(username string) (User, error) {
+func (repository UserRepository) GetUserByUsername(username string) (User, error) {
 	sqlQuery := `SELECT * FROM users WHERE username = $1`
 
 	var user User
@@ -32,7 +32,7 @@ func (repository UserRepository) getUserByUsername(username string) (User, error
 	return user, nil
 }
 
-func (repository UserRepository) isUsernameTaken(username string) (bool, error) {
+func (repository UserRepository) IsUsernameTaken(username string) (bool, error) {
 	sqlQuery := `SELECT 1 FROM users WHERE username = $1`
 	res, err := repository.db.Exec(sqlQuery, username)
 	if err != nil {
@@ -45,13 +45,13 @@ func (repository UserRepository) isUsernameTaken(username string) (bool, error) 
 	}
 
 	if rows == 0 {
-		return true, nil
-	} else {
 		return false, nil
+	} else {
+		return true, nil
 	}
 }
 
-func (repository UserRepository) addUser(username string) (int, error) {
+func (repository UserRepository) AddUser(username string) (int, error) {
 	sqlQuery := `INSERT INTO users (username) VALUES ($1) RETURNING id`
 	id := -1
 	err := repository.db.QueryRow(sqlQuery, username).Scan(&id)
@@ -62,7 +62,7 @@ func (repository UserRepository) addUser(username string) (int, error) {
 	return id, nil
 }
 
-func (repository UserRepository) removeUser(username string) error {
+func (repository UserRepository) RemoveUser(username string) error {
 	sqlQuery := `DELETE FROM users WHERE id = $1`
 	_, err := repository.db.Exec(sqlQuery, username)
 	if err != nil {

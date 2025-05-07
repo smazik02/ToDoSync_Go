@@ -34,7 +34,7 @@ func NewDBConnection() *sql.DB {
 }
 
 func CreateTables(db *sql.DB) {
-	_, err := db.Exec(`CREATE TABLE users (
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS users (
 						id SERIAL PRIMARY KEY,
 						username TEXT UNIQUE NOT NULL
 						)`)

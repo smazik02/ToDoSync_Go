@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"todosync_go/internal/database"
+	"todosync_go/internal/services"
+	"todosync_go/internal/shared"
 	"todosync_go/utils"
 )
 
@@ -17,25 +19,16 @@ const BUFSIZE = 4096
 
 type Server struct {
 	sync.RWMutex
-	wg          sync.WaitGroup
-	listener    *net.TCPListener
-	clients     map[net.Conn]Client
-	connections chan net.Conn
-	terminate   chan any
-	shutdown    chan any
+	wg             sync.WaitGroup
+	listener       *net.TCPListener
+	clients        map[net.Conn]shared.Client
+	connections    chan net.Conn
+	terminate      chan any
+	shutdown       chan any
+	serviceGateway *services.ServiceGateway
 }
 
-type Client struct {
-	connection net.Conn
-	buffer     strings.Builder
-	userId     int
-}
-
-func (c Client) isLoggedIn() bool {
-	return c.userId != -1
-}
-
-func NewServer(port int) (*Server, error) {
+func NewServer(port int, serviceGateway *services.ServiceGateway) (*Server, error) {
 	addr := net.TCPAddr{Port: port}
 
 	ln, err := net.ListenTCP("tcp", &addr)
@@ -47,12 +40,13 @@ func NewServer(port int) (*Server, error) {
 	database.CreateTables(db)
 
 	return &Server{
-		wg:          sync.WaitGroup{},
-		listener:    ln,
-		clients:     make(map[net.Conn]Client),
-		connections: make(chan net.Conn),
-		terminate:   make(chan any),
-		shutdown:    make(chan any),
+		wg:             sync.WaitGroup{},
+		listener:       ln,
+		clients:        make(map[net.Conn]shared.Client),
+		connections:    make(chan net.Conn),
+		terminate:      make(chan any),
+		shutdown:       make(chan any),
+		serviceGateway: serviceGateway,
 	}, nil
 }
 
@@ -124,7 +118,7 @@ func (s *Server) handleConnection(connection net.Conn) {
 
 	log.Printf("[%s] New connection\n", clientAddress)
 
-	client := Client{connection: connection, userId: -1}
+	client := shared.Client{Connection: connection, UserId: -1}
 	s.Lock()
 	s.clients[connection] = client
 	s.Unlock()
@@ -167,10 +161,10 @@ func (s *Server) handleConnection(connection net.Conn) {
 			s.Unlock()
 			return
 		case cnt := <-conChan:
-			client.buffer.Write(buf[:cnt])
-			messages := strings.Split(client.buffer.String(), "\n\n")
-			client.buffer.Reset()
-			client.buffer.WriteString(messages[len(messages)-1])
+			client.Buffer.Write(buf[:cnt])
+			messages := strings.Split(client.Buffer.String(), "\n\n")
+			client.Buffer.Reset()
+			client.Buffer.WriteString(messages[len(messages)-1])
 			messages = messages[:len(messages)-1]
 
 			for _, message := range messages {
@@ -183,6 +177,16 @@ func (s *Server) handleConnection(connection net.Conn) {
 				}
 
 				log.Printf("[%s] Parsed message: %s|%s\n", clientAddress, parsedMessage.ResourceMethod, string(parsedMessage.Payload))
+				response, err := s.serviceGateway.Direct(parsedMessage.ResourceMethod, parsedMessage.Payload, &client)
+				if err != nil {
+					log.Printf("[%s] Service error occured\n", clientAddress)
+					connection.Write([]byte(err.Error()))
+					log.Printf("[%s] Error message sent to client", clientAddress)
+					continue
+				}
+
+				log.Printf("[%s] Sent response to client\n", clientAddress)
+				connection.Write(response.Message)
 			}
 		}
 	}
