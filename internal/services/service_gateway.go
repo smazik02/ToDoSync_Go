@@ -15,15 +15,15 @@ func NewServiceGateway(userService *UserService) *ServiceGateway {
 	}
 }
 
-func (g ServiceGateway) Direct(resourceMethod utils.ResourceMethod, payload []byte, client *shared.Client) (*ServiceResponse, error) {
+func (g ServiceGateway) Direct(parsedMessage *utils.ParserOutput, client *shared.Client) (*ServiceResponse, error) {
 	_, isLoggedIn := g.userService.loggedInUsers[client.UserId]
-	if (!isLoggedIn || !client.IsLoggedIn()) && resourceMethod != utils.AuthLogin {
+	if (!isLoggedIn || !client.IsLoggedIn()) && parsedMessage.ResourceMethod != utils.AuthLogin {
 		return nil, ServiceError{"Not logged in", AUTH}
 	}
 
-	switch resourceMethod {
+	switch parsedMessage.ResourceMethod {
 	case utils.AuthLogin:
-		return g.userService.LoginUser(payload, client)
+		return g.userService.LoginUser(parsedMessage.Payload, client)
 	default:
 		return nil, ServiceError{"Unknown operation", AUTH}
 	}

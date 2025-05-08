@@ -26,7 +26,7 @@ func main() {
 
 	serviceGateway := services.NewServiceGateway(&userService)
 
-	srv, err := server.NewServer(port, serviceGateway)
+	srv, err := server.NewServer(port, serviceGateway, db)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"database/sql"
 	"errors"
 	"io"
 	"log"
@@ -28,7 +29,7 @@ type Server struct {
 	serviceGateway *services.ServiceGateway
 }
 
-func NewServer(port int, serviceGateway *services.ServiceGateway) (*Server, error) {
+func NewServer(port int, serviceGateway *services.ServiceGateway, db *sql.DB) (*Server, error) {
 	addr := net.TCPAddr{Port: port}
 
 	ln, err := net.ListenTCP("tcp", &addr)
@@ -36,7 +37,6 @@ func NewServer(port int, serviceGateway *services.ServiceGateway) (*Server, erro
 		return nil, err
 	}
 
-	db := database.NewDBConnection()
 	database.CreateTables(db)
 
 	return &Server{
@@ -176,8 +176,8 @@ func (s *Server) handleConnection(connection net.Conn) {
 					continue
 				}
 
-				log.Printf("[%s] Parsed message: %s|%s\n", clientAddress, parsedMessage.ResourceMethod, string(parsedMessage.Payload))
-				response, err := s.serviceGateway.Direct(parsedMessage.ResourceMethod, parsedMessage.Payload, &client)
+				// log.Printf("[%s] Parsed message: %s|%s\n", clientAddress, parsedMessage.ResourceMethod, string(parsedMessage.Payload))
+				response, err := s.serviceGateway.Direct(parsedMessage, &client)
 				if err != nil {
 					log.Printf("[%s] Service error occured\n", clientAddress)
 					connection.Write([]byte(err.Error()))
