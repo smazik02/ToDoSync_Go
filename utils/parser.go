@@ -8,13 +8,13 @@ import (
 type ResourceMethod = string
 
 const (
-	AUTH_LOGIN ResourceMethod = "AUTH|LOGIN"
-	T_GET_ALL  ResourceMethod = "T|GET_ALL"
-	T_CREATE   ResourceMethod = "T|CREATE"
-	T_DELETE   ResourceMethod = "T|DELETE"
-	TL_GET_ALL ResourceMethod = "TL|GET_ALL"
-	TL_CREATE  ResourceMethod = "TL|CREATE"
-	TL_DELETE  ResourceMethod = "TL|DELETE"
+	AuthLogin      ResourceMethod = "AUTH|LOGIN"
+	TaskGetAll     ResourceMethod = "T|GET_ALL"
+	TaskCreate     ResourceMethod = "T|CREATE"
+	TaskDelete     ResourceMethod = "T|DELETE"
+	TaskListGetAll ResourceMethod = "TL|GET_ALL"
+	TaskListCreate ResourceMethod = "TL|CREATE"
+	TaskListDelete ResourceMethod = "TL|DELETE"
 )
 
 type ParserOutput struct {
@@ -29,11 +29,11 @@ func ProcessRequest(request string) (*ParserOutput, error) {
 		return nil, ParserError{"Invalid request form"}
 	}
 
-	method, err := determineMethod(lines[0])
-	if err != nil {
+	if err := determineMethod(lines[0]); err != nil {
 		return nil, err
 	}
 
+	method := ResourceMethod(lines[0])
 	payload := []byte(lines[1])
 	if !json.Valid(payload) {
 		return nil, ParserError{"Invalid request body"}
@@ -45,23 +45,17 @@ func ProcessRequest(request string) (*ParserOutput, error) {
 	}, nil
 }
 
-func determineMethod(methodString string) (ResourceMethod, error) {
+func determineMethod(methodString string) error {
 	switch methodString {
-	case "AUTH|LOGIN":
-		return AUTH_LOGIN, nil
-	case "T|GET_ALL":
-		return T_GET_ALL, nil
-	case "T|CREATE":
-		return T_CREATE, nil
-	case "T|DELETE":
-		return T_DELETE, nil
-	case "TL|GET_ALL":
-		return TL_GET_ALL, nil
-	case "TL|CREATE":
-		return TL_CREATE, nil
-	case "TL|DELETE":
-		return TL_DELETE, nil
+	case AuthLogin,
+		TaskGetAll,
+		TaskCreate,
+		TaskDelete,
+		TaskListGetAll,
+		TaskListCreate,
+		TaskListDelete:
+		return nil
 	default:
-		return "", ParserError{"Method unknown"}
+		return ParserError{"Method unknown"}
 	}
 }

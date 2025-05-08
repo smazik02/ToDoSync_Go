@@ -17,12 +17,12 @@ func NewServiceGateway(userService *UserService) *ServiceGateway {
 
 func (g ServiceGateway) Direct(resourceMethod utils.ResourceMethod, payload []byte, client *shared.Client) (*ServiceResponse, error) {
 	_, isLoggedIn := g.userService.loggedInUsers[client.UserId]
-	if (!isLoggedIn || !client.IsLoggedIn()) && resourceMethod != utils.AUTH_LOGIN {
+	if (!isLoggedIn || !client.IsLoggedIn()) && resourceMethod != utils.AuthLogin {
 		return nil, ServiceError{"Not logged in", AUTH}
 	}
 
 	switch resourceMethod {
-	case utils.AUTH_LOGIN:
+	case utils.AuthLogin:
 		return g.userService.LoginUser(payload, client)
 	default:
 		return nil, ServiceError{"Unknown operation", AUTH}
