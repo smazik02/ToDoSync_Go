@@ -11,9 +11,9 @@ import (
 	"strings"
 	"sync"
 	"todosync_go/internal/database"
+	"todosync_go/internal/parser"
 	"todosync_go/internal/services"
 	"todosync_go/internal/shared"
-	"todosync_go/utils"
 )
 
 const BUFSIZE = 4096
@@ -168,7 +168,7 @@ func (s *Server) handleConnection(connection net.Conn) {
 			messages = messages[:len(messages)-1]
 
 			for _, message := range messages {
-				parsedMessage, err := utils.ProcessRequest(message)
+				parsedMessage, err := parser.ProcessRequest(message)
 				if err != nil {
 					log.Printf("[%s] Parser error occured\n", clientAddress)
 					connection.Write([]byte(err.Error()))
