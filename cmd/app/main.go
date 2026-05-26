@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"strconv"
@@ -23,8 +24,7 @@ func main() {
 	defer db.Close()
 
 	userService := services.NewUserService(db)
-
-	serviceGateway := services.NewServiceGateway(&userService)
+	serviceGateway := services.NewServiceGateway(userService)
 
 	srv, err := server.NewServer(port, serviceGateway, db)
 	if err != nil {
@@ -33,7 +33,11 @@ func main() {
 
 	log.Printf("Server listening on port %d...\n", port)
 
-	srv.Run()
+	ctx := context.Background()
 
-	log.Println("Server shutting down...")
+	if err := srv.Run(ctx); err != nil {
+		log.Printf("Server shutdown with error: %v\n", err)
+	} else {
+		log.Println("Server shut down")
+	}
 }

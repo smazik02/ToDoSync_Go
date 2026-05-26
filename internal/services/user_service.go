@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"todosync_go/internal/repositories"
 	"todosync_go/internal/shared"
-	"todosync_go/utils"
+	"todosync_go/internal/utils"
 
 	"github.com/go-playground/validator/v10"
 )
@@ -15,13 +15,13 @@ type RegisterUser struct {
 }
 
 type UserService struct {
-	repository    repositories.UserRepository
+	repository    *repositories.UserRepository
 	validator     *validator.Validate
 	loggedInUsers map[int]any
 }
 
-func NewUserService(db *sql.DB) UserService {
-	return UserService{
+func NewUserService(db *sql.DB) *UserService {
+	return &UserService{
 		repository:    repositories.NewUserRepository(db),
 		validator:     validator.New(validator.WithRequiredStructEnabled()),
 		loggedInUsers: make(map[int]any),

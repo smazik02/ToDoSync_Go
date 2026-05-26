@@ -2,6 +2,8 @@ package server
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"database/sql"
 	"errors"
 	"io"
@@ -14,18 +16,19 @@ import (
 	"todosync_go/internal/parser"
 	"todosync_go/internal/services"
 	"todosync_go/internal/shared"
+
+	"golang.org/x/sync/errgroup"
 )
 
 const BUFSIZE = 4096
+const MAX_BUFFER_SIZE = 8 * 1024 * 1024
 
 type Server struct {
 	sync.RWMutex
-	wg             sync.WaitGroup
+	eg             *errgroup.Group
 	listener       *net.TCPListener
-	clients        map[net.Conn]shared.Client
+	clients        map[net.Conn]*shared.Client
 	connections    chan net.Conn
-	terminate      chan any
-	shutdown       chan any
 	serviceGateway *services.ServiceGateway
 }
 
@@ -40,42 +43,48 @@ func NewServer(port int, serviceGateway *services.ServiceGateway, db *sql.DB) (*
 	database.CreateTables(db)
 
 	return &Server{
-		wg:             sync.WaitGroup{},
 		listener:       ln,
-		clients:        make(map[net.Conn]shared.Client),
+		clients:        make(map[net.Conn]*shared.Client),
 		connections:    make(chan net.Conn),
-		terminate:      make(chan any),
-		shutdown:       make(chan any),
 		serviceGateway: serviceGateway,
 	}, nil
 }
 
-func (s *Server) Run() {
-	s.wg.Add(2)
-	go s.handleTerminal()
-	go s.acceptConnections()
+func (s *Server) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	eg, egCtx := errgroup.WithContext(ctx)
+	s.eg = eg
+
+	s.eg.Go(func() error {
+		<-egCtx.Done()
+		return s.listener.Close()
+	})
+
+	s.eg.Go(func() error {
+		return s.acceptConnections(egCtx)
+	})
+
+	s.eg.Go(func() error {
+		s.handleTerminal(cancel)
+		return nil
+	})
 
 	for {
 		select {
 		case incoming := <-s.connections:
-			s.wg.Add(1)
-			go s.handleConnection(incoming)
-		case <-s.terminate:
-			s.Stop()
-			return
+			s.eg.Go(func() error {
+				s.handleConnection(ctx, incoming)
+				return nil
+			})
+		case <-egCtx.Done():
+			return s.eg.Wait()
 		}
 	}
 }
 
-func (s *Server) Stop() {
-	close(s.shutdown)
-	s.listener.Close()
-	s.wg.Wait()
-}
-
-func (s *Server) handleTerminal() {
-	defer s.wg.Done()
-
+func (s *Server) handleTerminal(cancel context.CancelFunc) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		scanner.Scan()
@@ -86,69 +95,83 @@ func (s *Server) handleTerminal() {
 		}
 
 		if command := strings.ToLower(strings.TrimRight(text, "\r\n")); command == "q" {
-			close(s.terminate)
+			cancel()
 			return
 		}
 	}
 }
 
-func (s *Server) acceptConnections() {
-	defer s.wg.Done()
-
+func (s *Server) acceptConnections(ctx context.Context) error {
 	for {
-		select {
-		case <-s.shutdown:
-			return
-		default:
-			conn, err := s.listener.Accept()
-			if err != nil {
-				continue
+		conn, err := s.listener.Accept()
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
 			}
+			return err
+		}
 
-			s.connections <- conn
+		select {
+		case s.connections <- conn:
+		case <-ctx.Done():
+			conn.Close()
+			return nil
 		}
 	}
 }
 
-func (s *Server) handleConnection(connection net.Conn) {
-	defer s.wg.Done()
+func (s *Server) handleConnection(ctx context.Context, connection net.Conn) {
 	defer connection.Close()
 
 	clientAddress := connection.RemoteAddr().String()
-
 	log.Printf("[%s] New connection\n", clientAddress)
 
-	client := shared.Client{Connection: connection, UserId: -1}
+	client := &shared.Client{Connection: connection, UserId: -1}
 	s.Lock()
 	s.clients[connection] = client
 	s.Unlock()
 
+	done := make(chan any)
+	defer close(done)
+
+	defer func() {
+		s.Lock()
+		delete(s.clients, connection)
+		s.Unlock()
+	}()
+
 	buf := make([]byte, BUFSIZE)
 
-	conChan, errChan := make(chan int, 1), make(chan error, 1)
-	s.wg.Add(1)
+	conChan, errChan := make(chan []byte, 1), make(chan error, 1)
 
-	go func() {
-		defer s.wg.Done()
-
+	s.eg.Go(func() error {
 		for {
 			cnt, err := connection.Read(buf)
 			if err != nil {
-				errChan <- err
-				return
+				select {
+				case errChan <- err:
+				case <-done:
+				}
+				return nil
 			}
-			conChan <- cnt
+
+			data := make([]byte, cnt)
+			copy(data, buf[:cnt])
+
+			select {
+			case conChan <- data:
+			case <-done:
+				return nil
+			}
 		}
-	}()
+	})
 
 	for {
 		select {
-		case <-s.shutdown:
+		case <-ctx.Done():
 			connection.Write([]byte("Disconnecting!"))
-			s.Lock()
-			delete(s.clients, connection)
-			s.Unlock()
 			return
+
 		case err := <-errChan:
 			if errors.Is(err, io.EOF) {
 				connection.Write([]byte("Disconnecting!"))
@@ -156,19 +179,31 @@ func (s *Server) handleConnection(connection net.Conn) {
 			} else {
 				log.Printf("[%s] Error: %s\n", clientAddress, err.Error())
 			}
-			s.Lock()
-			delete(s.clients, connection)
-			s.Unlock()
 			return
-		case cnt := <-conChan:
-			client.Buffer.Write(buf[:cnt])
-			messages := strings.Split(client.Buffer.String(), "\n\n")
-			client.Buffer.Reset()
-			client.Buffer.WriteString(messages[len(messages)-1])
-			messages = messages[:len(messages)-1]
 
-			for _, message := range messages {
-				parsedMessage, err := parser.ProcessRequest(message)
+		case data := <-conChan:
+			if client.Buffer.Len()+len(data) > MAX_BUFFER_SIZE {
+				log.Printf("[%s] Client exceeded max buffer size. Disconnecting.\n", clientAddress)
+				connection.Write([]byte("Disconnecting!"))
+				return
+			}
+
+			client.Buffer.Write(data)
+			separator := []byte("\n\n")
+
+			for {
+				unreadBytes := client.Buffer.Bytes()
+
+				idx := bytes.Index(unreadBytes, separator)
+				if idx == -1 {
+					break
+				}
+
+				messageStr := string(unreadBytes[:idx])
+
+				client.Buffer.Next(idx + len(separator))
+
+				parsedMessage, err := parser.ProcessRequest(messageStr)
 				if err != nil {
 					log.Printf("[%s] Parser error occured\n", clientAddress)
 					connection.Write([]byte(err.Error()))
@@ -177,7 +212,7 @@ func (s *Server) handleConnection(connection net.Conn) {
 				}
 
 				// log.Printf("[%s] Parsed message: %s|%s\n", clientAddress, parsedMessage.ResourceMethod, string(parsedMessage.Payload))
-				response, err := s.serviceGateway.Direct(parsedMessage, &client)
+				response, err := s.serviceGateway.Direct(parsedMessage, client)
 				if err != nil {
 					log.Printf("[%s] Service error occured\n", clientAddress)
 					connection.Write([]byte(err.Error()))

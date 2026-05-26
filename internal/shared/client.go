@@ -1,13 +1,13 @@
 package shared
 
 import (
+	"bytes"
 	"net"
-	"strings"
 )
 
 type Client struct {
 	Connection net.Conn
-	Buffer     strings.Builder
+	Buffer     bytes.Buffer
 	UserId     int
 }
 
